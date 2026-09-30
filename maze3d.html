@@ -1,0 +1,869 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>3D Maze | Maze3D</title>
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  html,body { width:100%; height:100%; overflow:hidden; background:#0b0e14; font-family:"Segoe UI",system-ui,-apple-system,Arial,sans-serif; color:#e8ecf1; }
+  #app { position:fixed; inset:0; }
+  #app canvas.game { display:block; width:100%; height:100%; touch-action:none; }
+  /* ---------- HUD ---------- */
+  #hud { position:fixed; top:0; left:0; right:0; display:none; justify-content:space-between; align-items:center;
+         padding:10px 14px; pointer-events:none; z-index:10; font-variant-numeric:tabular-nums;
+         background:linear-gradient(to bottom, rgba(0,0,0,.55), rgba(0,0,0,0)); }
+  #hud.show { display:flex; }
+  #hud .pill { background:rgba(10,14,22,.62); border:1px solid rgba(255,255,255,.14); border-radius:999px;
+               padding:5px 14px; font-size:14px; backdrop-filter:blur(6px); }
+  #hud #timer { font-size:17px; font-weight:700; letter-spacing:.5px; }
+  #hud .sub { opacity:.75; font-size:12px; margin-left:8px; font-weight:400;}
+  #crosshair { position:fixed; left:50%; top:50%; width:6px; height:6px; margin:-3px 0 0 -3px; border-radius:50%;
+               background:rgba(255,255,255,.85); box-shadow:0 0 6px rgba(0,0,0,.8); z-index:9; display:none; pointer-events:none;}
+  #crosshair.show { display:block; }
+  /* ---------- minimap ---------- */
+  #minimap { position:fixed; right:12px; bottom:12px; width:180px; height:180px; z-index:10;
+             border:2px solid rgba(255,255,255,.25); border-radius:10px; background:#05070c; display:none;
+             box-shadow:0 4px 18px rgba(0,0,0,.5); }
+  #minimap.show { display:block; }
+  /* ---------- overlays ---------- */
+  .overlay { position:fixed; inset:0; z-index:20; display:flex; align-items:center; justify-content:center;
+             background:rgba(5,8,14,.78); backdrop-filter:blur(8px); padding:20px; }
+  .overlay.hidden { display:none; }
+  .card { width:min(520px,94vw); max-height:92vh; overflow:auto; background:rgba(17,23,35,.96);
+          border:1px solid rgba(255,255,255,.12); border-radius:16px; padding:28px 28px 24px;
+          box-shadow:0 20px 60px rgba(0,0,0,.6); text-align:center; }
+  .card h1 { font-size:34px; letter-spacing:2px; margin-bottom:6px; }
+  .card h1 .accent { color:#4ade80; }
+  .card p.desc { opacity:.8; font-size:14px; line-height:1.7; margin:8px 0 16px; }
+  .card h2 { font-size:26px; margin-bottom:8px; }
+  .diff-row { display:flex; gap:10px; justify-content:center; margin:14px 0; flex-wrap:wrap; }
+  .diff-btn { flex:1 1 0; min-width:110px; padding:10px 6px; border-radius:10px; cursor:pointer;
+              border:2px solid rgba(255,255,255,.15); background:rgba(255,255,255,.06); color:#fff; font-size:14px; }
+  .diff-btn small { display:block; opacity:.65; font-size:12px; margin-top:2px;}
+  .diff-btn.active { border-color:#4ade80; background:rgba(74,222,128,.15); }
+  .seed-row { display:flex; gap:8px; justify-content:center; align-items:center; margin:6px 0 14px; font-size:14px;}
+  .seed-row input { width:140px; padding:8px 10px; border-radius:8px; border:1px solid rgba(255,255,255,.2);
+                    background:#0b111c; color:#fff; font-size:14px; text-align:center;}
+  .btn { display:inline-block; border:none; cursor:pointer; border-radius:10px; padding:12px 26px; font-size:16px;
+         font-weight:700; color:#06210f; background:linear-gradient(135deg,#4ade80,#22d3ee); margin:4px; min-width:150px;}
+  .btn:hover { filter:brightness(1.08); }
+  .btn.ghost { background:rgba(255,255,255,.1); color:#fff; border:1px solid rgba(255,255,255,.25); font-weight:500;}
+  .keys { text-align:left; font-size:13px; line-height:1.9; background:rgba(0,0,0,.3); border:1px solid rgba(255,255,255,.08);
+          border-radius:10px; padding:12px 16px; margin:12px 0; }
+  .keys kbd { background:#232c3d; border:1px solid rgba(255,255,255,.2); border-bottom-width:2px; border-radius:6px;
+              padding:1px 7px; font-family:inherit; font-size:12px; }
+  .best-line { font-size:13px; opacity:.8; margin-top:10px;}
+  .best-line b { color:#fbbf24; }
+  #toast { position:fixed; left:50%; bottom:90px; transform:translateX(-50%); z-index:30; display:none;
+           background:rgba(0,0,0,.85); border:1px solid rgba(255,255,255,.2); padding:10px 18px; border-radius:999px; font-size:14px;}
+  /* ---------- touch controls ---------- */
+  #touch-ui { position:fixed; inset:0; z-index:11; display:none; pointer-events:none; }
+  #touch-ui.show { display:block; }
+  #stick-base { position:absolute; left:26px; bottom:30px; width:120px; height:120px; border-radius:50%;
+                background:rgba(255,255,255,.08); border:2px solid rgba(255,255,255,.25); pointer-events:auto; touch-action:none;}
+  #stick-knob { position:absolute; left:50%; top:50%; width:54px; height:54px; margin:-27px 0 0 -27px; border-radius:50%;
+                background:rgba(255,255,255,.55); }
+  #look-hint { position:absolute; right:26px; bottom:44px; font-size:12px; opacity:.6; }
+  #btn-hint-mobile { position:absolute; right:18px; top:64px; pointer-events:auto; }
+  .icon-btn { width:44px; height:44px; border-radius:50%; border:1px solid rgba(255,255,255,.3);
+              background:rgba(0,0,0,.5); color:#fff; font-size:18px; margin-left:8px;}
+  #load-error, #webgl-error { position:fixed; inset:0; z-index:50; display:none; align-items:center; justify-content:center;
+             background:#0b0e14; padding:24px; text-align:center; }
+  .err-box { max-width:520px; line-height:1.8; }
+  .err-box h2 { color:#f87171; margin-bottom:10px;}
+  .stat-grid { display:flex; gap:12px; justify-content:center; margin:14px 0; flex-wrap:wrap;}
+  .stat { background:rgba(255,255,255,.06); border:1px solid rgba(255,255,255,.1); border-radius:10px; padding:10px 18px; min-width:120px;}
+  .stat .v { font-size:22px; font-weight:800; font-variant-numeric:tabular-nums;}
+  .stat .k { font-size:12px; opacity:.7;}
+  .new-best { color:#fbbf24; font-weight:700; margin-top:6px; display:none;}
+</style>
+</head>
+<body>
+<div id="app"></div>
+
+<div id="hud">
+  <div class="pill">⏱ <span id="timer">00:00.0</span><span class="sub" id="hud-best"></span></div>
+  <div class="pill">🌱 <span id="hud-seed">-</span> · <span id="hud-diff">Medium</span></div>
+  <div class="pill" id="hud-hint">Press H for hint (+30s)</div>
+</div>
+<div id="crosshair"></div>
+<canvas id="minimap" width="180" height="180"></canvas>
+
+<div id="touch-ui">
+  <div id="stick-base"><div id="stick-knob"></div></div>
+  <div id="look-hint">Drag on the right side to look around</div>
+  <div id="btn-hint-mobile"><button class="icon-btn" id="btn-run">🏃</button></div>
+</div>
+
+<!-- ===== Start menu ===== -->
+<div class="overlay" id="menu">
+  <div class="card">
+    <h1>3D <span class="accent">Maze</span></h1>
+    <p class="desc">A randomly generated first-person maze. Find the glowing exit beacon to win!<br><span id="menu-best"></span></p>
+    <div class="diff-row" id="diff-row">
+      <button class="diff-btn" data-diff="small">Small Maze<small>8 × 8 · Easy</small></button>
+      <button class="diff-btn active" data-diff="medium">Medium Maze<small>15 × 15 · Recommended</small></button>
+      <button class="diff-btn" data-diff="large">Large Maze<small>25 × 25 · Hard</small></button>
+    </div>
+    <div class="seed-row">Seed <input id="seed-input" inputmode="numeric" placeholder="Random"> <button class="btn ghost" id="btn-dice" style="min-width:0;padding:8px 14px;">🎲</button></div>
+    <div><button class="btn" id="btn-start">Start Game</button></div>
+    <div class="keys">
+      <div><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> / Arrow keys to move · Mouse to look (click the scene to lock)</div>
+      <div><kbd>Shift</kbd> Run · <kbd>M</kbd> Minimap · <kbd>H</kbd> Hint (+30s) · <kbd>R</kbd> Retry · <kbd>N</kbd> New maze · <kbd>Esc</kbd> Pause</div>
+      <div>Mobile: left stick to move · drag the right half to look</div>
+    </div>
+  </div>
+</div>
+
+<!-- ===== Pause ===== -->
+<div class="overlay hidden" id="pause">
+  <div class="card">
+    <h2>Paused</h2>
+    <p class="desc">Pointer unlocked, timer stopped.</p>
+    <div><button class="btn" id="btn-resume">Resume</button></div>
+    <div style="margin-top:8px;">
+      <button class="btn ghost" id="btn-restart1">Retry (R)</button>
+      <button class="btn ghost" id="btn-new1">New Maze (N)</button>
+      <button class="btn ghost" id="btn-tomenu">Main Menu</button>
+    </div>
+  </div>
+</div>
+
+<!-- ===== Win ===== -->
+<div class="overlay hidden" id="win">
+  <div class="card">
+    <h2>🎉 You Escaped!</h2>
+    <div class="stat-grid">
+      <div class="stat"><div class="v" id="win-time">-</div><div class="k">Time</div></div>
+      <div class="stat"><div class="v" id="win-best">-</div><div class="k">Best</div></div>
+    </div>
+    <div class="new-best" id="win-newbest">★ New Record! ★</div>
+    <div style="margin-top:12px;">
+      <button class="btn" id="btn-again">Play Again</button>
+      <button class="btn ghost" id="btn-new2">New Maze</button>
+    </div>
+  </div>
+</div>
+
+<div id="toast"></div>
+<div id="webgl-error"><div class="err-box"><h2>WebGL Unavailable</h2><p>Your browser or device does not support WebGL, so the 3D maze cannot run.<br>Please switch to the latest Chrome / Edge / Firefox / Safari with hardware acceleration enabled and try again.</p></div></div>
+<div id="load-error"><div class="err-box"><h2>Failed to load Three.js</h2><p>Could not load Three.js from the CDN (you may be offline or the network is blocked).<br>Please check your connection and refresh:<br><code>https://cdn.jsdelivr.net/npm/three@0.160.0/</code></p></div></div>
+
+<script>
+  // CDN failure fallback: if the module script hasn't started within 10 seconds, show a readable error (no blank page)
+  window.__booted = false;
+  setTimeout(function(){
+    if (!window.__booted) { document.getElementById('load-error').style.display = 'flex'; }
+  }, 10000);
+</script>
+
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js"
+  }
+}
+</script>
+
+<script type="module">
+import * as THREE from 'three';
+
+// ============================================================
+// ===== CONFIG =====  Constants
+// Coordinate convention (MUST be consistent): tile column col -> world x; tile row row -> world z.
+// World coords = (col+0.5)*TILE, y, (row+0.5)*TILE; inverse: col=floor(x/TILE), row=floor(z/TILE).
+// The minimap uses the same mapping: mapX<->col, mapY<->row.
+// ============================================================
+const TILE = 3;                 // Tile edge length (meters)
+const WALL_H = 3;               // Wall height
+const EYE = 1.62;               // Camera height ~= 0.54 * wall height
+const RADIUS = 0.6;             // Player radius = 0.2*TILE, less than half the corridor width (1.5)
+const WALK = 4.2, RUN = 7.2;    // Meters per second
+const SENS = 0.0023;            // Mouse sensitivity
+const PITCH_MAX = 85 * Math.PI / 180;
+const HINT_PENALTY = 30;        // Seconds
+const DIFFS = { small:{w:8,h:8,label:'Small'}, medium:{w:15,h:15,label:'Medium'}, large:{w:25,h:25,label:'Large'} };
+const LOOP_RATIO = 0.10;        // Extra wall-removal ratio
+const FOG_COLOR = 0x0b0e14;
+
+// ============================================================
+// ===== RNG =====  mulberry32 seeded PRNG
+// ============================================================
+function mulberry32(a){
+  a = a >>> 0;
+  return function(){
+    a |= 0; a = (a + 0x6D2B79F5) | 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+function randomSeed(){ return (Date.now() ^ (performance.now()*1000)) >>> 0 || 1; }
+
+// ============================================================
+// ===== MAZE GEN =====  Iterative recursive backtracker (DFS + explicit stack, no real recursion)
+// Tile grid (2W+1)x(2H+1): 1=wall, 0=path. Logic cell (cx,cy) <-> tile (2cx+1,2cy+1)
+// ============================================================
+function generateMaze(w, h, rng, loopRatio){
+  const TW = 2*w+1, TH = 2*h+1;
+  const grid = [];
+  for (let r=0;r<TH;r++){ grid.push(new Array(TW).fill(1)); }
+  const visited = [];
+  for (let y=0;y<h;y++){ visited.push(new Array(w).fill(false)); }
+  grid[1][1] = 0;
+  visited[0][0] = true;
+  const stack = [[0,0]];
+  const DIRS = [[1,0],[-1,0],[0,1],[0,-1]];
+  while (stack.length){
+    const top = stack[stack.length-1];
+    const cx = top[0], cy = top[1];
+    // Collect unvisited neighbors and shuffle them with the rng
+    const nbs = [];
+    for (let i=0;i<4;i++){
+      const nx = cx+DIRS[i][0], ny = cy+DIRS[i][1];
+      if (nx>=0 && ny>=0 && nx<w && ny<h && !visited[ny][nx]) nbs.push([nx,ny]);
+    }
+    for (let i=nbs.length-1;i>0;i--){ const j = Math.floor(rng()*(i+1)); const t=nbs[i]; nbs[i]=nbs[j]; nbs[j]=t; }
+    if (!nbs.length){ stack.pop(); continue; }
+    const nxt = nbs[0];
+    const x1=2*cx+1, y1=2*cy+1, x2=2*nxt[0]+1, y2=2*nxt[1]+1;
+    grid[(y1+y2)/2][(x1+x2)/2] = 0;
+    grid[y2][x2] = 0;
+    visited[nxt[1]][nxt[0]] = true;
+    stack.push(nxt);
+  }
+  // Extra openings: collect walls with passages on both sides, knock down a share of them to form loops
+  const cand = [];
+  for (let r=1;r<TH-1;r++) for (let c=1;c<TW-1;c++){
+    if (grid[r][c]!==1) continue;
+    const hz = grid[r][c-1]===0 && grid[r][c+1]===0;
+    const vt = grid[r-1][c]===0 && grid[r+1][c]===0;
+    if (hz || vt) cand.push([c,r]);
+  }
+  for (let i=cand.length-1;i>0;i--){ const j=Math.floor(rng()*(i+1)); const t=cand[i]; cand[i]=cand[j]; cand[j]=t; }
+  const knock = Math.floor(cand.length * loopRatio);
+  for (let i=0;i<knock;i++) grid[cand[i][1]][cand[i][0]] = 0;
+  return { grid, TW, TH, w, h };
+}
+
+// ============================================================
+// ===== MAZE UTILS =====  BFS / farthest cell / wall query
+// ============================================================
+function bfsFrom(grid, TW, TH, sc, sr){
+  const dist = []; for (let r=0;r<TH;r++) dist.push(new Array(TW).fill(-1));
+  const prev = []; for (let r=0;r<TH;r++) prev.push(new Array(TW).fill(-1));
+  const q = [[sc,sr]]; dist[sr][sc]=0; let head=0;
+  const DIRS=[[1,0],[-1,0],[0,1],[0,-1]];
+  while (head<q.length){
+    const cur=q[head++]; const c=cur[0], r=cur[1];
+    for (let i=0;i<4;i++){
+      const nc=c+DIRS[i][0], nr=r+DIRS[i][1];
+      if (nc<0||nr<0||nc>=TW||nr>=TH) continue;
+      if (grid[nr][nc]!==0 || dist[nr][nc]!==-1) continue;
+      dist[nr][nc]=dist[r][c]+1; prev[nr][nc]=r*TW+c; q.push([nc,nr]);
+    }
+  }
+  return { dist, prev };
+}
+// Start is fixed at logic cell (0,0) -> tile (1,1); exit is the BFS-farthest logic cell center (SHOULD)
+function farthestCell(grid, TW, TH){
+  const b = bfsFrom(grid, TW, TH, 1, 1);
+  let best={c:1,r:1}, bd=-1;
+  for (let cy=0;cy<=(TH-3)/2;cy++) for (let cx=0;cx<=(TW-3)/2;cx++){
+    const c=2*cx+1, r=2*cy+1;
+    if (b.dist[r][c]>bd){ bd=b.dist[r][c]; best={c:c,r:r}; }
+  }
+  return best;
+}
+function bfsPathTiles(grid,TW,TH,s,p){
+  const b=bfsFrom(grid,TW,TH,s.c,s.r);
+  if (b.dist[p.r][p.c]===-1) return [];
+  const path=[]; let cur=p.r*TW+p.c;
+  const startKey=s.r*TW+s.c;
+  while (cur!==-1 && cur!==startKey){ path.push({c:cur%TW, r:Math.floor(cur/TW)}); cur=b.prev[Math.floor(cur/TW)][cur%TW]; }
+  path.push({c:s.c,r:s.r}); path.reverse();
+  return path;
+}
+function tileOf(x, z){ return { c: Math.floor(x/TILE), r: Math.floor(z/TILE) }; }
+function isWallTile(grid, TW, TH, c, r){
+  if (c<0||r<0||c>=TW||r>=TH) return true;
+  return grid[r][c]===1;
+}
+function worldOf(c, r){ return { x:(c+0.5)*TILE, z:(r+0.5)*TILE }; }
+
+// ============================================================
+// ===== TEXTURES =====  Procedurally generated with Canvas (no external assets)
+// ============================================================
+function canvasTex(size, draw, repX, repZ){
+  const cv=document.createElement('canvas'); cv.width=cv.height=size;
+  draw(cv.getContext('2d'), size);
+  const t=new THREE.CanvasTexture(cv);
+  t.colorSpace=THREE.SRGBColorSpace;
+  t.wrapS=t.wrapT=THREE.RepeatWrapping;
+  t.repeat.set(repX,repZ);
+  return t;
+}
+function drawBrick(ctx,s){
+  ctx.fillStyle='#8a7f74'; ctx.fillRect(0,0,s,s);
+  const bh=s/4, bw=s/2;
+  for (let row=0;row<4;row++){
+    const off=(row%2)*bw/2;
+    for (let x=-1;x<3;x++){
+      const bx=x*bw+off, by=row*bh;
+      const shade=150+Math.floor(((row*7+x*13)%3))*12;
+      ctx.fillStyle='rgb('+shade+','+Math.floor(shade*0.9)+','+Math.floor(shade*0.82)+')';
+      ctx.fillRect(bx+2,by+2,bw-4,bh-4);
+      ctx.fillStyle='rgba(255,255,255,.08)'; ctx.fillRect(bx+2,by+2,bw-4,3);
+    }
+  }
+  ctx.fillStyle='rgba(0,0,0,.18)';
+  for (let i=0;i<300;i++) ctx.fillRect(Math.random()*s,Math.random()*s,2,2);
+}
+function drawFloor(ctx,s){
+  ctx.fillStyle='#3d4149'; ctx.fillRect(0,0,s,s);
+  const n=4, cell=s/n;
+  for (let y=0;y<n;y++) for (let x=0;x<n;x++){
+    const v=58+((x*5+y*11)%3)*7;
+    ctx.fillStyle='rgb('+v+','+(v+3)+','+(v+8)+')';
+    ctx.fillRect(x*cell+2,y*cell+2,cell-4,cell-4);
+  }
+  ctx.strokeStyle='rgba(0,0,0,.5)'; ctx.lineWidth=3;
+  for (let i=0;i<=n;i++){ ctx.beginPath();ctx.moveTo(i*cell,0);ctx.lineTo(i*cell,s);ctx.stroke();
+    ctx.beginPath();ctx.moveTo(0,i*cell);ctx.lineTo(s,i*cell);ctx.stroke(); }
+}
+function drawCeil(ctx,s){
+  ctx.fillStyle='#22262e'; ctx.fillRect(0,0,s,s);
+  ctx.fillStyle='rgba(255,255,255,.04)';
+  for (let i=0;i<200;i++) ctx.fillRect(Math.random()*s,Math.random()*s,3,3);
+}
+
+// ============================================================
+// ===== BOOT / RENDERER / SCENE =====
+// ============================================================
+window.__booted = true;
+let renderer=null, scene=null, camera=null, clock=null;
+let maxAniso=4;
+try {
+  const test=document.createElement('canvas');
+  if (!(test.getContext('webgl2')||test.getContext('webgl'))) throw new Error('no webgl');
+} catch(e){ document.getElementById('webgl-error').style.display='flex'; throw e; }
+
+const app=document.getElementById('app');
+renderer=new THREE.WebGLRenderer({antialias:true, powerPreference:'high-performance'});
+renderer.setPixelRatio(Math.min(window.devicePixelRatio||1, 2));
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.domElement.className='game';
+app.appendChild(renderer.domElement);
+maxAniso=renderer.capabilities.getMaxAnisotropy();
+
+scene=new THREE.Scene();
+scene.background=new THREE.Color(FOG_COLOR);
+scene.fog=new THREE.Fog(FOG_COLOR, 6, 52);
+camera=new THREE.PerspectiveCamera(72, window.innerWidth/window.innerHeight, 0.05, 600);
+camera.rotation.order='YXZ'; // MUST: yaw first then pitch, otherwise they couple and the view skews
+clock=new THREE.Clock();
+
+// Lighting: hemisphere light + ambient light + flashlight point light following the player
+scene.add(new THREE.HemisphereLight(0xbfd4ff, 0x2a2118, 0.75));
+scene.add(new THREE.AmbientLight(0xffffff, 0.25));
+const torch=new THREE.PointLight(0xffe6b8, 28, 22, 1.6);
+scene.add(torch);
+const endLight=new THREE.PointLight(0x4ade80, 40, 18, 1.7);
+scene.add(endLight);
+
+// Shared reusable textures/materials (reused across levels to avoid memory growth)
+function tuned(tex){ tex.anisotropy=maxAniso; return tex; }
+const sharedBrick=tuned(canvasTex(256, drawBrick, 1, 1));
+const sharedFloor=tuned(canvasTex(256, drawFloor, 1, 1));
+const sharedCeil=tuned(canvasTex(256, drawCeil, 1, 1));
+const wallMat=new THREE.MeshStandardMaterial({map:sharedBrick, roughness:.9, metalness:.02});
+const floorMat=new THREE.MeshStandardMaterial({map:sharedFloor, roughness:.95, metalness:0});
+const ceilMat=new THREE.MeshStandardMaterial({map:sharedCeil, roughness:1, color:0xbfc6d4});
+
+// ============================================================
+// ===== SCENE BUILD =====  buildLevel / disposeLevel
+// Walls use a single InstancedMesh (MUST: never one Mesh per wall)
+// ============================================================
+let levelGroup=null, wallMesh=null, startMarker=null, endGroup=null, endGem=null, endPillar=null, hintLine=null;
+let maze=null, TW=0, TH=0, startTile={c:1,r:1}, endTile={c:1,r:1};
+let floorMesh=null, ceilMesh=null;
+
+function disposeLevel(){
+  if (!levelGroup) return;
+  scene.remove(levelGroup);
+  levelGroup.traverse(function(o){
+    if (o.geometry) o.geometry.dispose();
+    // Dispose only level-owned materials; shared textures and materials are reused
+    if (o.material && o.material!==wallMat && o.material!==floorMat && o.material!==ceilMat){
+      if (Array.isArray(o.material)) o.material.forEach(function(m){m.dispose();});
+      else o.material.dispose();
+    }
+  });
+  levelGroup=null; wallMesh=null; hintLine=null; endGem=null;
+}
+function buildLevel(m){
+  disposeLevel();
+  maze=m; TW=m.TW; TH=m.TH;
+  startTile={c:1,r:1};
+  endTile=farthestCell(m.grid, TW, TH);
+  // Dev-time safety net: BFS assertion that the exit is reachable from the start
+  const chk=bfsFrom(m.grid,TW,TH,1,1);
+  if (chk.dist[endTile.r][endTile.c]===-1) { endTile={c:TW-2,r:TH-2}; }
+
+  levelGroup=new THREE.Group(); scene.add(levelGroup);
+  const W=TILE*TW, D=TILE*TH, cx=W/2, cz=D/2;
+
+  // Floor
+  sharedFloor.repeat.set(TW,TH);
+  const fg=new THREE.PlaneGeometry(W,D);
+  floorMesh=new THREE.Mesh(fg,floorMat);
+  floorMesh.rotation.x=-Math.PI/2; floorMesh.position.set(cx,0,cz);
+  levelGroup.add(floorMesh);
+  // Ceiling (caps the scene so it never looks open-topped + fog hides the distance)
+  sharedCeil.repeat.set(TW,TH);
+  const cg=new THREE.PlaneGeometry(W,D);
+  ceilMesh=new THREE.Mesh(cg,ceilMat);
+  ceilMesh.rotation.x=Math.PI/2; ceilMesh.position.set(cx,WALL_H,cz);
+  levelGroup.add(ceilMesh);
+
+  // Walls: count them first -> a single InstancedMesh
+  let count=0;
+  for (let r=0;r<TH;r++) for (let c=0;c<TW;c++) if (m.grid[r][c]===1) count++;
+  const box=new THREE.BoxGeometry(TILE,WALL_H,TILE);
+  wallMesh=new THREE.InstancedMesh(box,wallMat,count);
+  const mtx=new THREE.Matrix4();
+  let i=0;
+  for (let r=0;r<TH;r++) for (let c=0;c<TW;c++){
+    if (m.grid[r][c]!==1) continue;
+    const w=worldOf(c,r);
+    mtx.makeTranslation(w.x, WALL_H/2, w.z);
+    wallMesh.setMatrixAt(i++, mtx);
+  }
+  wallMesh.instanceMatrix.needsUpdate=true;
+  levelGroup.add(wallMesh);
+
+  // Start marker (green disc, +0.01 to avoid z-fighting)
+  const sg=new THREE.CircleGeometry(TILE*0.32, 32);
+  const sm=new THREE.MeshBasicMaterial({color:0x22c55e});
+  startMarker=new THREE.Mesh(sg,sm);
+  startMarker.rotation.x=-Math.PI/2;
+  const sw=worldOf(startTile.c,startTile.r);
+  startMarker.position.set(sw.x,0.012,sw.z);
+  levelGroup.add(startMarker);
+
+  // Exit: glowing beacon pillar + rotating floating gem + point light
+  endGroup=new THREE.Group();
+  const ew=worldOf(endTile.c,endTile.r);
+  const pg=new THREE.CylinderGeometry(TILE*0.28,TILE*0.34,WALL_H,20,1,true);
+  const pm=new THREE.MeshBasicMaterial({color:0x4ade80, transparent:true, opacity:0.35, side:THREE.DoubleSide, depthWrite:false});
+  endPillar=new THREE.Mesh(pg,pm); endPillar.position.y=WALL_H/2; endGroup.add(endPillar);
+  const gg=new THREE.OctahedronGeometry(0.42);
+  const gm=new THREE.MeshStandardMaterial({color:0x86efac, emissive:0x22c55e, emissiveIntensity:1.6, roughness:.2, metalness:.3});
+  endGem=new THREE.Mesh(gg,gm); endGem.position.y=1.7; endGroup.add(endGem);
+  const eg=new THREE.CircleGeometry(TILE*0.34,32);
+  const em=new THREE.MeshBasicMaterial({color:0x4ade80});
+  const pad=new THREE.Mesh(eg,em); pad.rotation.x=-Math.PI/2; pad.position.y=0.012; endGroup.add(pad);
+  endGroup.position.set(ew.x,0,ew.z);
+  levelGroup.add(endGroup);
+  endLight.position.set(ew.x,2,ew.z);
+
+  // Hint route (hidden, toggled with H)
+  hintLine=null;
+  visitedTiles=new Set();
+}
+
+// ============================================================
+// ===== INPUT =====  Keyboard / mouse PointerLock / touch
+// ============================================================
+const keys={};
+const IS_TOUCH=('ontouchstart' in window)||(navigator.maxTouchPoints>0);
+function clearKeys(){ for (const k in keys) keys[k]=false; joy.x=0; joy.y=0; }
+window.addEventListener('keydown', function(e){
+  if (['ArrowUp','ArrowDown','ArrowLeft','ArrowRight','Space'].includes(e.code)) e.preventDefault();
+  keys[e.code]=true;
+  if (e.code==='KeyM') toggleMinimap();
+  if (e.code==='KeyH') toggleHint();
+  if (e.code==='KeyR') restartSame();
+  if (e.code==='KeyN') newMaze();
+});
+window.addEventListener('keyup', function(e){ keys[e.code]=false; });
+window.addEventListener('blur', clearKeys);
+document.addEventListener('visibilitychange', function(){ if (document.hidden) clearKeys(); });
+
+// Mouse look: request PointerLock only on canvas click (MUST be triggered by a user gesture)
+let yaw=0, pitch=0;
+const canvas=renderer.domElement;
+canvas.addEventListener('click', function(){
+  if (state!=='playing' || IS_TOUCH) return;
+  lockPointer();
+});
+function lockPointer(){
+  if (document.pointerLockElement===canvas) return;
+  try {
+    const p=canvas.requestPointerLock();
+    if (p && p.catch) p.catch(function(){ toast('Pointer lock was blocked, click the scene again'); });
+  } catch(err){ toast('Pointer lock failed, click the scene again'); }
+}
+document.addEventListener('pointerlockchange', function(){
+  const locked=document.pointerLockElement===canvas;
+  if (!locked && state==='playing' && !IS_TOUCH) pauseGame();
+});
+document.addEventListener('pointerlockerror', function(){ toast('Pointer lock error, click the scene again'); });
+document.addEventListener('mousemove', function(e){
+  if (document.pointerLockElement!==canvas || (state!=='playing')) return;
+  let mx=e.movementX||0, my=e.movementY||0;
+  if (Math.abs(mx)>300||Math.abs(my)>300) return; // Drop abnormal spikes
+  yaw-=mx*SENS; pitch-=my*SENS;
+  pitch=Math.max(-PITCH_MAX, Math.min(PITCH_MAX, pitch));
+});
+// Touch: left stick + drag on the right half to look
+const joy={x:0,y:0,run:false};
+(function initTouch(){
+  if (!IS_TOUCH) return;
+  document.getElementById('touch-ui').classList.add('show');
+  document.getElementById('hud-hint').textContent='Left stick to move · drag right to look';
+  const base=document.getElementById('stick-base'), knob=document.getElementById('stick-knob');
+  let sid=null, cx0=0, cy0=0;
+  base.addEventListener('pointerdown', function(e){ sid=e.pointerId; cx0=e.clientX; cy0=e.clientY; base.setPointerCapture(sid); });
+  base.addEventListener('pointermove', function(e){
+    if (e.pointerId!==sid) return;
+    let dx=(e.clientX-cx0)/45, dy=(e.clientY-cy0)/45;
+    const len=Math.hypot(dx,dy); if (len>1){dx/=len;dy/=len;}
+    joy.x=dx; joy.y=dy;
+    knob.style.transform='translate('+(dx*34)+'px,'+(dy*34)+'px)';
+  });
+  function end(e){ if(e.pointerId===sid){sid=null;joy.x=0;joy.y=0;knob.style.transform='';} }
+  base.addEventListener('pointerup',end); base.addEventListener('pointercancel',end);
+  let lid=null,lx=0,ly=0;
+  window.addEventListener('pointerdown',function(e){
+    if(state!=='playing')return;
+    if(e.clientX>window.innerWidth/2 && e.target===canvas){lid=e.pointerId;lx=e.clientX;ly=e.clientY;}
+  });
+  window.addEventListener('pointermove',function(e){
+    if(e.pointerId!==lid||state!=='playing')return;
+    yaw-=(e.clientX-lx)*0.0045; pitch-=(e.clientY-ly)*0.0045;
+    pitch=Math.max(-PITCH_MAX,Math.min(PITCH_MAX,pitch));
+    lx=e.clientX;ly=e.clientY;
+  });
+  function lend(e){ if(e.pointerId===lid)lid=null; }
+  window.addEventListener('pointerup',lend); window.addEventListener('pointercancel',lend);
+  document.getElementById('btn-run').addEventListener('click',function(){joy.run=!joy.run;
+    document.getElementById('btn-run').style.opacity=joy.run?'1':'0.5';});
+})();
+
+// ============================================================
+// ===== PLAYER / PHYSICS =====  Per-axis movement + circle-vs-AABB push-out (slides along walls)
+// ============================================================
+const player={ x:0, z:0 };
+let bobPhase=0, bobAmp=0;
+const tmpV=new THREE.Vector3();
+function faceOpenDirection(){
+  // Face an open passage at spawn, never a wall
+  const g=maze.grid;
+  if (!isWallTile(g,TW,TH,2,1)) yaw=-Math.PI/2;       // East +x
+  else if (!isWallTile(g,TW,TH,1,2)) yaw=Math.PI;     // South +z
+  else if (!isWallTile(g,TW,TH,0,1)) yaw=Math.PI/2;   // West
+  else yaw=0;
+  pitch=0;
+}
+function placeAtStart(){
+  const w=worldOf(startTile.c,startTile.r);
+  player.x=w.x; player.z=w.z;
+  faceOpenDirection();
+  bobPhase=0;
+  syncCamera(0);
+}
+function collide(px, pz){
+  // Scan the 3x3 tiles around the player; treat walls as AABBs and push out to the closest point
+  const tc=Math.floor(px/TILE), tr=Math.floor(pz/TILE);
+  for (let r=tr-1;r<=tr+1;r++) for (let c=tc-1;c<=tc+1;c++){
+    if (!isWallTile(maze.grid,TW,TH,c,r)) continue;
+    const minX=c*TILE, maxX=(c+1)*TILE, minZ=r*TILE, maxZ=(r+1)*TILE;
+    const nx=Math.max(minX,Math.min(px,maxX));
+    const nz=Math.max(minZ,Math.min(pz,maxZ));
+    let dx=px-nx, dz=pz-nz;
+    const d2=dx*dx+dz*dz;
+    if (d2>=RADIUS*RADIUS) continue;
+    if (d2>1e-12){ const d=Math.sqrt(d2), push=(RADIUS-d)/d; px+=dx*push; pz+=dz*push; }
+    else {
+      // Degenerate case: center inside the wall, push out along the least-penetration axis
+      const pl=px-minX, pr=maxX-px, pt=pz-minZ, pb=maxZ-pz;
+      const m=Math.min(pl,pr,pt,pb);
+      if (m===pl) px=minX-RADIUS; else if (m===pr) px=maxX+RADIUS;
+      else if (m===pt) pz=minZ-RADIUS; else pz=maxZ+RADIUS;
+    }
+  }
+  return [px,pz];
+}
+function movePlayer(dx, dz){
+  // Anti-tunneling: split into sub-steps when one step exceeds r*0.5; per-axis moves give wall sliding
+  const dist=Math.hypot(dx,dz);
+  const steps=Math.max(1, Math.ceil(dist/(RADIUS*0.5)));
+  const sx=dx/steps, sz=dz/steps;
+  for (let i=0;i<steps;i++){
+    let r=collide(player.x+sx, player.z); player.x=r[0]; player.z=r[1];
+    r=collide(player.x, player.z+sz); player.x=r[0]; player.z=r[1];
+  }
+}
+function syncCamera(dt){
+  camera.position.set(player.x, EYE + Math.sin(bobPhase)*bobAmp, player.z);
+  camera.rotation.set(pitch, yaw, Math.sin(bobPhase)*bobAmp*0.12);
+}
+
+// ============================================================
+// ===== AUDIO =====  Synthesized with WebAudio (no external assets)
+// ============================================================
+let AC=null;
+function ac(){ if(!AC){ try{ AC=new (window.AudioContext||window.webkitAudioContext)(); }catch(e){ AC=null; } } return AC; }
+function blip(freq, dur, type, gain){
+  const c=ac(); if(!c) return;
+  try{
+    const o=c.createOscillator(), g=c.createGain();
+    o.type=type||'sine'; o.frequency.value=freq;
+    g.gain.setValueAtTime(gain||0.08, c.currentTime);
+    g.gain.exponentialRampToValueAtTime(0.0001, c.currentTime+dur);
+    o.connect(g); g.connect(c.destination); o.start(); o.stop(c.currentTime+dur);
+  }catch(e){}
+}
+function footstep(){ blip(90+Math.random()*30, 0.07, 'triangle', 0.03); }
+function winSound(){ const c=ac(); if(!c)return; [523,659,784,1046].forEach(function(f,i){
+  setTimeout(function(){blip(f,0.25,'sine',0.1);}, i*130); }); }
+
+// ============================================================
+// ===== MINIMAP =====  Same mapping as 3D: col->right, row->down
+// ============================================================
+let minimapOn=true, visitedTiles=new Set();
+const mm=document.getElementById('minimap'), mmc=mm.getContext('2d');
+function toggleMinimap(){ minimapOn=!minimapOn;
+  mm.classList.toggle('show', minimapOn && (state==='playing'||state==='paused')); }
+function markVisited(){
+  const t=tileOf(player.x,player.z);
+  for (let r=t.r-1;r<=t.r+1;r++) for (let c=t.c-1;c<=t.c+1;c++){
+    if(c>=0&&r>=0&&c<TW&&r<TH) visitedTiles.add(r*TW+c);
+  }
+}
+function drawMinimap(){
+  if (!maze) return;
+  const W=mm.width, H=mm.height;
+  mmc.fillStyle='#05070c'; mmc.fillRect(0,0,W,H);
+  const s=Math.min(W/TW,H/TH);
+  const ox=(W-s*TW)/2, oy=(H-s*TH)/2;
+  for (let r=0;r<TH;r++) for (let c=0;c<TW;c++){
+    const seen=visitedTiles.has(r*TW+c);
+    if (!seen){ mmc.fillStyle='rgba(255,255,255,.04)'; }
+    else if (maze.grid[r][c]===1){ mmc.fillStyle='#5b6675'; }
+    else { mmc.fillStyle='#141b28'; }
+    mmc.fillRect(ox+c*s, oy+r*s, Math.ceil(s), Math.ceil(s));
+  }
+  // Exit dot (only if visited)
+  if (visitedTiles.has(endTile.r*TW+endTile.c)){
+    mmc.fillStyle='#4ade80';
+    mmc.beginPath(); mmc.arc(ox+(endTile.c+.5)*s, oy+(endTile.r+.5)*s, Math.max(3,s*0.7), 0, 7); mmc.fill();
+  }
+  // Player arrow: forward = (-sin yaw, -cos yaw), so the canvas rotates by -yaw
+  const t=tileOf(player.x,player.z);
+  const px=ox+(t.c+((player.x/TILE)%1))*s, py=oy+(t.r+((player.z/TILE)%1))*s;
+  mmc.save(); mmc.translate(px,py); mmc.rotate(-yaw);
+  mmc.fillStyle='#fbbf24';
+  mmc.beginPath(); mmc.moveTo(0,-7); mmc.lineTo(5,5); mmc.lineTo(0,2.4); mmc.lineTo(-5,5); mmc.closePath(); mmc.fill();
+  mmc.restore();
+}
+
+// ============================================================
+// ===== UI / STATE =====  menu | playing | paused | won
+// ============================================================
+let state='menu';
+let seed=randomSeed(), diffKey='medium';
+let elapsed=0, hintOn=false, hintPenaltyApplied=false;
+const $=function(id){return document.getElementById(id);};
+function toast(msg){ const t=$('toast'); t.textContent=msg; t.style.display='block';
+  clearTimeout(t._h); t._h=setTimeout(function(){t.style.display='none';},2200); }
+function fmt(t){ const m=Math.floor(t/60), s=t-m*60;
+  return String(m).padStart(2,'0')+':'+s.toFixed(1).padStart(4,'0'); }
+function bestKey(){ return 'maze3d_best_'+diffKey; }
+function getBest(){ try{ const v=localStorage.getItem(bestKey()); return v?parseFloat(v):null; }catch(e){ return null; } }
+function setBest(v){ try{ localStorage.setItem(bestKey(), String(v)); }catch(e){} }
+function refreshBestLabels(){
+  const b=getBest();
+  $('hud-best').textContent=b?('Best '+fmt(b)):'';
+  $('menu-best').textContent=b?('Best for this difficulty: '+fmt(b)):'';
+}
+function parseURL(){
+  try{
+    const q=new URLSearchParams(location.search);
+    if (q.get('seed')) seed=(parseInt(q.get('seed'),10)>>>0)||randomSeed();
+    const sz=parseInt(q.get('size'),10);
+    if (sz>=6&&sz<=31){
+      let bestK=null,bestD=1e9;
+      for (const k in DIFFS){ const d=Math.abs(DIFFS[k].w-sz); if(d<bestD){bestD=d;bestK=k;} }
+      diffKey=bestK;
+    }
+  }catch(e){}
+}
+function showStateUI(){
+  $('menu').classList.toggle('hidden', state!=='menu');
+  $('pause').classList.toggle('hidden', state!=='paused');
+  $('win').classList.toggle('hidden', state!=='won');
+  $('hud').classList.toggle('show', state==='playing'||state==='paused');
+  $('crosshair').classList.toggle('show', state==='playing'&&!IS_TOUCH);
+  mm.classList.toggle('show', minimapOn&&(state==='playing'||state==='paused'));
+}
+function startLevel(newSeed, newDiff){
+  if (newDiff) diffKey=newDiff;
+  if (newSeed!==undefined&&newSeed!==null) seed=newSeed>>>0;
+  const d=DIFFS[diffKey];
+  const rng=mulberry32(seed);
+  buildLevel(generateMaze(d.w,d.h,rng,LOOP_RATIO));
+  elapsed=0; hintOn=false; hintPenaltyApplied=false;
+  clearHintMesh();
+  placeAtStart();
+  state='playing';
+  $('hud-seed').textContent=seed;
+  $('hud-diff').textContent=d.label+ ' '+d.w+'×'+d.h;
+  $('seed-input').value=seed;
+  refreshBestLabels(); showStateUI();
+  try{ history.replaceState(null,'','?seed='+seed+'&size='+d.w); }catch(e){}
+}
+function pauseGame(){ if(state!=='playing')return; state='paused'; clearKeys(); showStateUI(); }
+function resumeGame(){
+  if(state!=='paused')return; state='playing'; showStateUI(); clock.getDelta();
+  if(!IS_TOUCH) lockPointer();
+}
+function winOnce(){
+  if(state!=='playing')return; // State-machine guard: trigger only once
+  state='won'; winSound();
+  try{ if(document.pointerLockElement) document.exitPointerLock(); }catch(e){}
+  clearKeys();
+  const b=getBest(); let nb=false;
+  if(!b||elapsed<b){ setBest(elapsed); nb=true; }
+  $('win-time').textContent=fmt(elapsed);
+  $('win-best').textContent=fmt(getBest()||elapsed);
+  $('win-newbest').style.display=nb?'block':'none';
+  refreshBestLabels(); showStateUI();
+}
+function restartSame(){ if(state==='menu')return; startLevel(seed, diffKey); if(state==='playing'&&!IS_TOUCH&&document.pointerLockElement!==canvas){} }
+function newMaze(){ if(state==='menu')return; startLevel(randomSeed(), diffKey); }
+
+// Difficulty buttons
+document.querySelectorAll('.diff-btn').forEach(function(b){
+  b.addEventListener('click', function(){
+    document.querySelectorAll('.diff-btn').forEach(function(x){x.classList.remove('active');});
+    b.classList.add('active'); diffKey=b.dataset.diff;
+    $('seed-input').value=seed; refreshBestLabels();
+  });
+});
+$('btn-dice').addEventListener('click', function(){ seed=randomSeed(); $('seed-input').value=seed; });
+$('btn-start').addEventListener('click', function(){
+  ac(); // Create the AudioContext inside the user gesture
+  let s=parseInt($('seed-input').value,10);
+  if (isNaN(s)) s=randomSeed();
+  startLevel(s>>>0, diffKey);
+  if(!IS_TOUCH) lockPointer();
+});
+$('btn-resume').addEventListener('click', resumeGame);
+$('btn-restart1').addEventListener('click', function(){ startLevel(seed,diffKey); if(!IS_TOUCH)lockPointer(); });
+$('btn-new1').addEventListener('click', function(){ startLevel(randomSeed(),diffKey); if(!IS_TOUCH)lockPointer(); });
+$('btn-again').addEventListener('click', function(){ startLevel(seed,diffKey); if(!IS_TOUCH)lockPointer(); });
+$('btn-new2').addEventListener('click', function(){ startLevel(randomSeed(),diffKey); if(!IS_TOUCH)lockPointer(); });
+$('btn-tomenu').addEventListener('click', function(){ state='menu'; clearKeys(); showStateUI(); });
+
+// ============================================================
+// ===== HINT =====  Draw the BFS shortest path on the floor (COULD, +30s penalty on first use)
+// ============================================================
+function clearHintMesh(){
+  if (hintLine){ levelGroup.remove(hintLine); hintLine.geometry.dispose(); hintLine.material.dispose(); hintLine=null; }
+}
+function toggleHint(){
+  if(state!=='playing'||!maze) return;
+  if (hintLine){ clearHintMesh(); hintOn=false; return; }
+  const t=tileOf(player.x,player.z);
+  const s={c:Math.max(0,Math.min(TW-1,t.c)), r:Math.max(0,Math.min(TH-1,t.r))};
+  if (maze.grid[s.r][s.c]===1){ toast('You are inside a wall, move a bit and retry'); return; }
+  const path=bfsPathTiles(maze.grid,TW,TH,s,endTile);
+  if(!path.length){ toast('No path found'); return; }
+  const pts=path.map(function(p){ const w=worldOf(p.c,p.r); return new THREE.Vector3(w.x,0.05,w.z); });
+  const g=new THREE.BufferGeometry().setFromPoints(pts);
+  const m=new THREE.LineBasicMaterial({color:0xfbbf24});
+  hintLine=new THREE.Line(g,m); levelGroup.add(hintLine);
+  hintOn=true;
+  if(!hintPenaltyApplied){ elapsed+=HINT_PENALTY; hintPenaltyApplied=true; toast('Hint route shown, +30s penalty'); }
+  else toast('Hint route shown');
+}
+
+// ============================================================
+// ===== MAIN LOOP =====
+// ============================================================
+function updatePlayer(dt){
+  let fw=0, st=0;
+  if (keys.KeyW||keys.ArrowUp) fw+=1;
+  if (keys.KeyS||keys.ArrowDown) fw-=1;
+  if (keys.KeyA||keys.ArrowLeft) st-=1;
+  if (keys.KeyD||keys.ArrowRight) st+=1;
+  fw+= -joy.y; st+= joy.x;
+  const len=Math.hypot(fw,st);
+  if (len>1){ fw/=len; st/=len; }
+  const run=(keys.ShiftLeft||keys.ShiftRight||joy.run);
+  const sp=run?RUN:WALK;
+  const sin=Math.sin(yaw), cos=Math.cos(yaw);
+  // Forward (-sin,-cos), right (cos,-sin); yaw only (looking up never changes forward motion)
+  const dx=((-sin)*fw + cos*st)*sp*dt;
+  const dz=((-cos)*fw + (-sin)*st)*sp*dt;
+  if (dx||dz){
+    movePlayer(dx,dz);
+    bobPhase+=dt*sp*1.6;
+    bobAmp=Math.min(0.055, bobAmp+dt*0.4);
+    if (Math.sin(bobPhase)>0.985) footstep();
+  } else bobAmp=Math.max(0, bobAmp-dt*0.5);
+  syncCamera(dt);
+  torch.position.set(player.x, EYE+0.2, player.z);
+  markVisited();
+  // Win check: XZ distance < 0.5*TILE
+  const ew=worldOf(endTile.c,endTile.r);
+  if (Math.hypot(player.x-ew.x, player.z-ew.z)<0.5*TILE) winOnce();
+}
+let mmAcc=0;
+function loop(){
+  requestAnimationFrame(loop);
+  let dt=Math.min(clock.getDelta(), 0.05); // MUST: clamp dt so tab-switching can't teleport through walls
+  const t=performance.now()/1000;
+  if (state==='playing'){
+    elapsed+=dt;
+    $('timer').textContent=fmt(elapsed);
+    updatePlayer(dt);
+    // Exit animation: spin + bob
+    if (endGem){ endGem.rotation.y+=dt*2.2; endGem.position.y=1.7+Math.sin(t*2.4)*0.22; }
+    if (endPillar) endPillar.rotation.y+=dt*0.6;
+    mmAcc+=dt; if (mmAcc>0.08){ mmAcc=0; if(minimapOn) drawMinimap(); }
+  } else if (state==='menu'){
+    // Menu backdrop: slowly orbit the camera around the generated maze
+    if (endGem){ endGem.rotation.y+=dt*2.2; endGem.position.y=1.7+Math.sin(t*2.4)*0.22; }
+    camera.position.set(Math.cos(t*0.15)*20+TW*TILE/2, 14, Math.sin(t*0.15)*20+TH*TILE/2);
+    camera.lookAt(TW*TILE/2, 0, TH*TILE/2);
+  }
+  renderer.render(scene,camera);
+}
+
+window.addEventListener('resize', function(){
+  camera.aspect=window.innerWidth/window.innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(window.innerWidth, window.innerHeight);
+});
+
+// ============================================================
+// ===== INIT =====
+// ============================================================
+parseURL();
+document.querySelectorAll('.diff-btn').forEach(function(x){
+  x.classList.toggle('active', x.dataset.diff===diffKey);
+});
+$('seed-input').value=seed;
+(function initPreview(){
+  const d=DIFFS[diffKey], rng=mulberry32(seed);
+  buildLevel(generateMaze(d.w,d.h,rng,LOOP_RATIO));
+  placeAtStart(); refreshBestLabels(); showStateUI();
+})();
+loop();
+</script>
+</body>
+</html>
